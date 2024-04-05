@@ -1,0 +1,24 @@
+# dataset: 'pathology'
+class_num: 3
+# distri_type: 'noniidlt' # 'iid', 'noniid', 'lt', 'noniidlt'
+# imb_factor: 0.1 # for lt
+# noniid_factor: 0.5 # for noniid
+algorithm: 'delta'
+# data_corruption_dir: '../../data/CIFAR-10-C'
+# output: './output'
+# pretrained_model_dir: ''
+# arch: 'resnet26'
+# batch_size: 500
+exp_type: 'each_shift_reset'  
+# corruption: 'gaussian_noise'
+workers: 2
+optim_type: 'sgd'
+optim_lr: 0.00025
+optim_wd: 0.
+optim_momentum: 0.9
+loss_type: 'entropy' # 'entropy', 'cross_entropy'
+ent_w: False
+norm_type: 'rn' # 'bn_training', 'rn'
+old_prior: 0.5
+dot: 0.9
+prefix: 'tentdelta'
