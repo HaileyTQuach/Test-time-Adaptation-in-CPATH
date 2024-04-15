@@ -91,27 +91,39 @@ from models.test_utils import LAME
 import yaml
 import torch.optim as optim
 
-
+import models.sar as sar
+from models.sam import SAM
+import models.tent as TENT1
+import math
 # In[6]:
 
-
-def setup_tent(model,steps,episodic,noaffine=False):
+def setup_tent(model,steps,episodic,METHOD,noaffine=False):
     """Set up tent adaptation.
 
     Configure the model for training + feature modulation by batch statistics,
     collect the parameters for feature modulation by gradient optimization,
     set up the optimizer, and then tent the model.
     """
-    model = tent.configure_model(model,noaffine=noaffine)
-    params, param_names = tent.collect_params(model)
-    optimizer = setup_tent_optimizer(params)
-    tent_model = tent.Tent(model, optimizer,
+    model = TENT1.configure_model(model,noaffine=noaffine)
+    params, param_names = TENT1.collect_params(model)
+    if METHOD=="SGD":
+        optimizer = optim.SGD(params,
+                        lr=0.00025,
+                        momentum=0.9
+                        )
+    elif METHOD=="Adam":
+        optimizer = optim.Adam(params,
+                    lr=1e-3,
+                    betas=(0.9, 0.999),
+                    weight_decay=0)
+
+    tent_model = TENT1.Tent(model, optimizer,
                            steps=steps,#cfg.OPTIM.STEPS
                            episodic=episodic,
                           noaffine=noaffine)#cfg.MODEL.EPISODIC
     return tent_model
 
-def setup_tent_optimizer(params,METHOD="Adam",WD=0,LR = 1e-3,BETA = 0.9):
+def setup_tent_optimizer(params,METHOD="Adam",WD=0,LR = 1e-3,BETA = 0.9,momentum=0.9):
     """Set up optimizer for tent adaptation.
 
     Tent needs an optimizer for test-time entropy minimization.
@@ -122,15 +134,20 @@ def setup_tent_optimizer(params,METHOD="Adam",WD=0,LR = 1e-3,BETA = 0.9):
 
     For best results, try tuning the learning rate and batch size.
     """
+    
     if METHOD == 'Adam':
         return optim.Adam(params,
                     lr=LR,
                     betas=(BETA, 0.999),
                     weight_decay=WD)
     elif METHOD == 'SGD':
-        return None
+        return optim.SGD(params,
+                        lr=LR,
+                        momentum=0.9
+                        )
     else:
         raise NotImplementedError
+        
 def eval_TTA(methods,adapt_model,chosen_loader):
     with torch.no_grad():
 
@@ -189,10 +206,13 @@ def eval_TTA(methods,adapt_model,chosen_loader):
 
 
 parser = argparse.ArgumentParser(description='pathology TTA')
-parser.add_argument('--artifact', default = '01_focus', type=str)
-parser.add_argument('--cor_path', default = 'Corrupted_data/01_case_western_native/', type=str)
+parser.add_argument('--artifact', type=str)
+parser.add_argument('--cor_path', type=str)
+
+parser.add_argument('--model_name', default = 'TvN_350_SN_D256_Initial_Ep7_fullmodel.pth', type=str)
 args = parser.parse_args()
 corrupt_data_path=args.cor_path
+model_name = args.model_name
 artifact = args.artifact
 print(artifact)
 print(os.getcwd())
@@ -203,7 +223,7 @@ stain_norm.fit(st)
 
 
 model_dir = 'Models'
-model_names = os.listdir(model_dir)
+# model_names = os.listdir(model_dir)
 m_p_s = 350
 
 
@@ -219,40 +239,47 @@ for seed in  [0,19,22, 42, 81]: #2020 , 42, 81
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    custom_dataset = CustomDataset(root=f"{corrupt_data_path}/{artifact}/", transform=custom_transform)
-    dataloader = DataLoader(custom_dataset, batch_size=64, shuffle=True)
+#     custom_dataset = CustomDataset(root=f"Corrupted_data/{corrupt_data_path}/{artifact}/", transform=custom_transform)
+#     dataloader = DataLoader(custom_dataset, batch_size=64, shuffle=True)
+
+    with open('configs/cifar_tentdelta_adam.yaml', 'rb') as f:
+        args_tent = yaml.safe_load(f.read())
+    config_obj = SimpleNamespace(**args_tent)
+
+    path_model = os.path.join(model_dir, model_name)
+    net = torch.load(path_model) 
+    net = net.cuda()
+    net.eval()
+    lame_model=LAME(copy.deepcopy(net),3,5,1)
+    delta_model= DELTA(config_obj,copy.deepcopy(net))
+    sarnet = sar.configure_model(copy.deepcopy(net))
+    params, param_names = sar.collect_params(sarnet)
+    base_optimizer = torch.optim.SGD
+    optimizer = SAM(params, base_optimizer, lr=0.00025, momentum=0.9) #lr suitable for batch size >32
+    sar_model = sar.SAR(sarnet, optimizer, margin_e0=math.log(3)*0.40) # since we have 3 classes
+
+    tentnet = setup_tent(copy.deepcopy(net),1,False,METHOD="adam")
+    TENT1.check_model(tentnet)
+
         
-    for model_name in model_names:
-        with open('configs/cifar_tentdelta.yaml', 'rb') as f:
-            args_tent = yaml.safe_load(f.read())
-        config_obj = SimpleNamespace(**args_tent)
-
-        path_model = os.path.join(model_dir, model_name)
-        net = torch.load(path_model) 
-        net = net.cuda()
-        net.eval()
-
-        lame_model=LAME(copy.deepcopy(net),10,5,1)
-        delta_model= DELTA(config_obj,copy.deepcopy(net))
-        tentnet = setup_tent(copy.deepcopy(net),1,False)
-        tent.check_model(tentnet)    
-        methods=["DELTA","NOT_ADAPTED","TENT","LAME"] #"TTN"
-        adapt_model={"DELTA":delta_model,"TENT":tentnet,"NOT_ADAPTED":net,"LAME":lame_model} #"TTN":norm_net_TTN
-        print("model name:", model_name, "artifact: ",artifact)
-        custom_dataset = CustomDataset(root=f"{corrupt_data_path}/{artifact}/", transform=custom_transform)
-        dataloader = DataLoader(custom_dataset, batch_size=64, shuffle=True)
-        res=eval_TTA(methods,adapt_model,dataloader)
-        json_entry = {
-            'parameters': {
+    methods=["TENT","DELTA","NOT_ADAPTED", "LAME","SAR"] #"TTN" "DELTA","NOT_ADAPTED", "LAME",
+    adapt_model={"DELTA":delta_model,"TENT":tentnet,"NOT_ADAPTED":net,"LAME":lame_model,"SAR":sar_model} #"TTN":norm_net_TTN, 
+    print("model name:", model_name, "artifact: ",artifact)
+    tentnet = setup_tent(copy.deepcopy(net),1,False)
+    tent.check_model(tentnet)    
+    custom_dataset = CustomDataset(root=f"Corrupted_data/{corrupt_data_path}/{artifact}/", transform=custom_transform)
+    dataloader = DataLoader(custom_dataset, batch_size=64, shuffle=True)
+    res=eval_TTA(methods,adapt_model,dataloader)
+    json_entry = {"parameters": {
             "seed":seed,
             "artifact": artifact,
             "model" : model_name
             },
-            'results': res
+            "results": res
             }
-        json_data.append(json_entry)
+    json_data.append(json_entry)
         
-with open(f"results_TTA_{artifact}_{model_name[:-4]}.json", 'w') as json_file:
+with open(f"TTA_on_corrupted/{corrupt_data_path}/results_TTA_{artifact}_{model_name[:-4]}.json", 'w') as json_file:
     json.dump(json_data, json_file, indent=4, separators=(',',': '))
 
 

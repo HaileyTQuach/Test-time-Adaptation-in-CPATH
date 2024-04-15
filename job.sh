@@ -7,14 +7,14 @@
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --partition=long
 #SBATCH --time=01:00:00
-#SBATCH --array=0-8
+#SBATCH --array=0-9
 
 module load anaconda/3
 source /home/mila/p/paria.mehrbod/.bashrc
 conda activate pathology
 
-corruptions=("01_focus" "02_jpeg" "04_rotation" "05_flip" "08_bright" "09_contrast" "10_dark_spots" "12_squamous" "13_fat")   
+corruptions=("00_original" "01_focus" "02_jpeg" "04_rotation" "05_flip" "08_bright" "09_contrast" "10_dark_spots" "12_squamous" "13_fat")   
 
 corruption=${corruptions[$SLURM_ARRAY_TASK_ID]}
 
-python 3_Validation_TTA.py --artifact $corruption --cor_path "Corrupted_data/01_case_western_native/"
+python 3_Validation_TTA.py --artifact $corruption --cor_path "01_case_western_native/" --model_name "TvN_350_SN_D256_Initial_Ep7_fullmodel.pth"

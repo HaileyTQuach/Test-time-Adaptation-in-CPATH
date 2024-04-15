@@ -19,6 +19,6 @@ optim_momentum: 0.9
 loss_type: 'entropy' # 'entropy', 'cross_entropy'
 ent_w: False
 norm_type: 'rn' # 'bn_training', 'rn'
-old_prior: 0.5
+old_prior: 0.95
 dot: 0.9
 prefix: 'tentdelta'

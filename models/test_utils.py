@@ -41,12 +41,12 @@ WD= 0.
 STEPS = 100
 LR = 1e-3
 BETA = 0.9
-OPTIMIZER = "Adam"
-BATCH_SIZE = 16 #x
-OPTIM_MOMENTUM =  0.9 #x
-DAMPENING = 0. 
-WEIGHT_DECAY = 0.0001 
-NESTEROV = True #x
+# OPTIMIZER = "Adam"
+# BATCH_SIZE = 16 #x
+# OPTIM_MOMENTUM =  0.9 #x
+# DAMPENING = 0. 
+# WEIGHT_DECAY = 0.0001 
+# NESTEROV = True #x
 AFFINITY="rbf"
 FORCE_SYMMETRY=False
 SIGMA=1
@@ -133,7 +133,12 @@ class LAME(nn.Module):
        
         self.configure_model()
         self.params, param_names = self.collect_params()
-        self.optimizer = self.setup_optimizer() if len(self.params) > 0 else None
+        if len(self.params) > 0:
+            self.optimizer = self.setup_optimizer()
+        else:
+            print("here")
+            self.optimizer = None
+#         self.optimizer = self.setup_optimizer() if len(self.params) > 0 else None
         self.print_amount_trainable_params()
         
 #         # variables needed for single sample test-time adaptation (sstta) using a sliding window (buffer) approach
