@@ -9,7 +9,7 @@
 
 | NAME |
 | --- |
-| Paria Mehbrod | 
+| Paria Mehrbod | 
 | Phuong Thao Quach |
 
 <br>
