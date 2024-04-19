@@ -78,7 +78,6 @@
   <li>Scikit-Learn</li>
   <li>PyTorch (along with <code>torch.nn</code>, <code>torch.optim</code>, <code>torch.utils.data</code>, etc.)</li>
   <li>Torchvision (including datasets, models, transforms)</li>
-  <li>Orion (including the <code>profet</code> package)</li>
   <li>Argparse (for parsing command-line options)</li>
   <li>TSNE (from Scikit-Learn for dimensionality reduction techniques)</li>
   <li>KNeighborsClassifier, GridSearchCV (from Scikit-Learn for machine learning models)</li>
