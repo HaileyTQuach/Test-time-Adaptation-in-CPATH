@@ -14,7 +14,7 @@
 
 <br>
 
-<h3>Overview of Test-Time Adaptation (TTA) for Digital Histopathology</h3>
+<h3>[ Overview of Test-Time Adaptation (TTA) for Digital Histopathology ]</h3>
 
 <h4>Problem Statement</h4>
 <p>
@@ -92,7 +92,7 @@
 </p>
 
 <br>
-<h3>Instructions on How to Train/Validate Models and Experiment with TTA techniques</h3>
+<h3>[ Instructions on How to Train/Validate Models and Experiment with TTA techniques ]</h3>
 
 <p>For cluster environments like Compute Canada, utilize the provided shell scripts to train and validate the models. Ensure you clone the project repository and have all the required files before proceeding.</p>
     
