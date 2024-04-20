@@ -1,3 +1,5 @@
+# https://github.com/DequanWang/tent/blob/master/tent.py
+
 from copy import deepcopy
 
 import torch
@@ -5,20 +7,17 @@ import torch.nn as nn
 import torch.jit
 
 
-        
 class Tent(nn.Module):
     """Tent adapts a model by entropy minimization during testing.
-
     Once tented, a model adapts itself by updating on every forward.
     """
-    def __init__(self, model, optimizer, steps=1, episodic=False,noaffine=False):
+    def __init__(self, model, optimizer, steps=1, episodic=False):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
         self.steps = steps
         assert steps > 0, "tent requires >= 1 step(s) to forward and update"
         self.episodic = episodic
-        self.noaffine=noaffine
 
         # note: if the model is never reset, like for continual adaptation,
         # then skipping the state copy would save memory
@@ -28,11 +27,9 @@ class Tent(nn.Module):
     def forward(self, x):
         if self.episodic:
             self.reset()
-        
-        
 
         for _ in range(self.steps):
-            outputs = forward_and_adapt(x, self.model, self.optimizer, self.noaffine)
+            outputs = forward_and_adapt(x, self.model, self.optimizer)
 
         return outputs
 
@@ -50,34 +47,30 @@ def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
 
 
 @torch.enable_grad()  # ensure grads in possible no grad context for testing
-def forward_and_adapt(x, model, optimizer,noaffine):
+def forward_and_adapt(x, model, optimizer):
     """Forward and adapt model on batch of data.
-
     Measure entropy of the model prediction, take gradients, and update params.
     """
     # forward
     outputs = model(x)
     # adapt
     loss = softmax_entropy(outputs).mean(0)
-    if not noaffine:
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
     return outputs
 
 
 def collect_params(model):
     """Collect the affine scale + shift parameters from batch norms.
-
     Walk the model's modules and collect all batch normalization parameters.
     Return the parameters and their names.
-
     Note: other choices of parameterization are possible!
     """
     params = []
     names = []
     for nm, m in model.named_modules():
-        if isinstance(m, nn.BatchNorm2d):
+        if isinstance(m, (nn.BatchNorm2d, nn.GroupNorm, nn.LayerNorm)):
             for np, p in m.named_parameters():
                 if np in ['weight', 'bias']:  # weight is scale, bias is shift
                     params.append(p)
@@ -98,27 +91,23 @@ def load_model_and_optimizer(model, optimizer, model_state, optimizer_state):
     optimizer.load_state_dict(optimizer_state)
 
 
-def configure_model(model,noaffine=False):
+def configure_model(model):
     """Configure model for use with tent."""
     # train mode, because tent optimizes the model to minimize entropy
     model.train()
     # disable grad, to (re-)enable only what tent updates
-    
-    
     model.requires_grad_(False)
     # configure norm for tent updates: enable grad + force batch statisics
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d):
-            if noaffine:
-                m.requires_grad_(False)
-            else:
-                m.requires_grad_(True)
+            m.requires_grad_(True)
             # force use of batch stats in train and eval modes
             m.track_running_stats = False
             m.running_mean = None
             m.running_var = None
+        if isinstance(m, (nn.GroupNorm, nn.LayerNorm)):
+            m.requires_grad_(True)
     return model
-
 
 
 def check_model(model):
